@@ -5,7 +5,7 @@ import { traeBadgePlugin } from 'vite-plugin-trae-solo-badge';
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/splatshow-viewer/',
+  base: '/',
   build: {
     sourcemap: 'hidden',
   },
