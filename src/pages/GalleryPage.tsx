@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
-import { ModelCard } from '@/components/gallery/ModelCard'
-import { SearchBar } from '@/components/gallery/SearchBar'
-import { models } from '@/data/models'
+import { ModelCard } from '../components/gallery/ModelCard'
+import { SearchBar } from '../components/gallery/SearchBar'
+import { models } from '../data/models'
 
 export default function GalleryPage() {
   const [search, setSearch] = useState('')

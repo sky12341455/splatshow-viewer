@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
-import { models } from '@/data/models'
+import { models } from '../../data/models'
 
 export function FeaturedModels() {
   const navigate = useNavigate()

@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { SparkRenderer, SplatMesh, PackedSplats } from '@sparkjsdev/spark'
-import type { ViewerState, EditMode } from '@/types'
+import type { ViewerState, EditMode } from '../types'
 
 interface UseSplatViewerOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>

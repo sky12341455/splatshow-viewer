@@ -1,5 +1,5 @@
-import type { ModelEntry } from '@/types'
-import { DEFAULT_MODEL_URL } from '@/types'
+import type { ModelEntry } from '../types'
+import { DEFAULT_MODEL_URL } from '../types'
 
 export const models: ModelEntry[] = [
   {

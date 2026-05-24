@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import type { ModelEntry } from '@/types'
+import type { ModelEntry } from '../../types'
 
 interface ModelCardProps {
   model: ModelEntry

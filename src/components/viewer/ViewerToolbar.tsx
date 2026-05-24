@@ -1,6 +1,6 @@
 import { ArrowLeft, RotateCcw, Grid3X3, Maximize, Info, Minimize, MousePointer2, Trash2, Move, PenLine, Undo2, Redo2, FolderOpen, MapPin } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import type { EditMode } from '@/types'
+import type { EditMode } from '../../types'
 
 interface ViewerToolbarProps {
   modelName: string
