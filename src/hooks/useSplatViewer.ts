@@ -1,8 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { SparkRenderer, SplatMesh, SplatLoader } from '@sparkjsdev/spark'
-import type { PackedSplats } from '@sparkjsdev/spark'
+import { SparkRenderer, SplatMesh, PackedSplats } from '@sparkjsdev/spark'
 import type { ViewerState, EditMode } from '@/types'
 
 interface UseSplatViewerOptions {
@@ -24,7 +23,6 @@ export function useSplatViewer({
   const controlsRef = useRef<OrbitControls | null>(null)
   const sparkRef = useRef<SparkRenderer | null>(null)
   const splatMeshRef = useRef<SplatMesh | null>(null)
-  const loaderRef = useRef<SplatLoader | null>(null)
   const defaultCameraPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 3, 8))
   const defaultTargetRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0))
   const fpsDisplayRef = useRef<HTMLSpanElement | null>(null)
@@ -95,9 +93,6 @@ export function useSplatViewer({
       }
     })
 
-    const loader = new SplatLoader()
-    loaderRef.current = loader
-
     let resizeRaf = 0
     window.addEventListener('resize', () => {
       cancelAnimationFrame(resizeRaf)
@@ -129,22 +124,95 @@ export function useSplatViewer({
 
       setState((s) => ({ ...s, isLoading: true, progress: 0, error: null, splatCount: 0 }))
 
-      try {
-        const loader = loaderRef.current!
-        const result = await loader.loadAsync(url, (event: ProgressEvent) => {
-          if (event.lengthComputable && event.total > 0) {
-            const pct = (event.loaded / event.total) * 100
-            setState((s) => ({ ...s, progress: pct }))
-            onProgress?.(pct)
-          }
-        })
+      let totalBytes: Uint8Array | null = null
+      const isBlobUrl = url.startsWith('blob:')
+      const ext = url.split('?')[0].split('.').pop()?.toLowerCase() || ''
+      console.log('[SplatLoader] Loading:', url, '| ext:', ext, '| isBlob:', isBlobUrl)
 
-        const splatMesh = loader.parse(result as PackedSplats)
+      try {
+        if (!isBlobUrl) {
+          console.log('[SplatLoader] Strategy 1: fetch + SplatMesh({ url, fileBytes })')
+          const response = await fetch(url)
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          }
+          const ct = response.headers.get('content-type') || 'unknown'
+          const cl = parseInt(response.headers.get('content-length') || '0', 10)
+          console.log('[SplatLoader] Content-Type:', ct, 'Size:', cl)
+
+          const reader = response.body!.getReader()
+          const chunks: Uint8Array[] = []
+          let loaded = 0
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            chunks.push(value)
+            loaded += value.length
+            if (cl > 0) {
+              const pct = Math.round((loaded / cl) * 100)
+              setState((s) => ({ ...s, progress: pct }))
+              onProgress?.(pct)
+            }
+          }
+
+          totalBytes = new Uint8Array(loaded)
+          let off = 0
+          for (const c of chunks) { totalBytes.set(c, off); off += c.length }
+          console.log('[SplatLoader] Downloaded', (totalBytes.byteLength / 1024 / 1024).toFixed(1), 'MB')
+          console.log('[SplatLoader] Header:', Array.from(totalBytes.slice(0, 8)).map(b => b.toString(16).padStart(2,'0')).join(' '))
+        } else {
+          const buf = await (await fetch(url)).arrayBuffer()
+          totalBytes = new Uint8Array(buf)
+          console.log('[SplatLoader] Blob size:', (totalBytes.byteLength / 1024 / 1024).toFixed(1), 'MB')
+        }
+
+        setState((s) => ({ ...s, progress: 50 }))
+        let splatMesh: SplatMesh | null = null
+
+        const tryCreateMesh = async (label: string, creator: () => Promise<SplatMesh> | SplatMesh): Promise<SplatMesh | null> => {
+          try {
+            console.log(`[SplatLoader] Trying ${label}...`)
+            const mesh = await creator()
+            await mesh.initialized
+            console.log(`[SplatLoader] ${label} SUCCESS`)
+            return mesh
+          } catch (e) {
+            console.warn(`[SplatLoader] ${label} failed:`, e instanceof Error ? e.message : e)
+            return null
+          }
+        }
+
+        if (!isBlobUrl && ext) {
+          splatMesh = await tryCreateMesh('Strategy A: SplatMesh({ fileBytes })', async () => {
+            const m = new SplatMesh({ fileBytes: totalBytes! })
+            return m
+          })
+        }
+
+        if (!splatMesh) {
+          splatMesh = await tryCreateMesh('Strategy B: PackedSplats({ fileBytes }) -> SplatMesh', async () => {
+            const packed = new PackedSplats({ fileBytes: totalBytes! })
+            return new SplatMesh({ packedSplats: packed })
+          })
+        }
+
+        if (!splatMesh) {
+          splatMesh = await tryCreateMesh('Strategy C: PackedSplats({ url, fileBytes }) -> SplatMesh', async () => {
+            const packed = new PackedSplats({ url, fileBytes: totalBytes! })
+            return new SplatMesh({ packedSplats: packed })
+          })
+        }
+
+        if (!splatMesh) {
+          throw new Error('所有加载策略均失败。文件格式可能不被支持。支持的格式: .ply .spz .sog .splat .ksplat')
+        }
+
         splatMesh.position.set(0, 0, 0)
-        sceneRef.current.add(splatMesh)
+        sceneRef.current!.add(splatMesh)
         splatMeshRef.current = splatMesh
 
-        await splatMesh.initialized
+        setState((s) => ({ ...s, progress: 100 }))
+        onProgress?.(100)
 
         const box = splatMesh.getBoundingBox()
         const center = box.getCenter(new THREE.Vector3())
@@ -177,7 +245,6 @@ export function useSplatViewer({
         }
 
         setState((s) => ({ ...s, isLoading: false, progress: 100, splatCount }))
-        onProgress?.(100)
         onLoadComplete?.(splatCount)
 
         const spark = sparkRef.current
@@ -187,7 +254,7 @@ export function useSplatViewer({
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        console.error('Load failed:', err)
+        console.error('[SplatLoader] Load failed:', err)
         setState((s) => ({ ...s, isLoading: false, error: message }))
         onError?.(message)
       }
@@ -261,7 +328,6 @@ export function useSplatViewer({
       controlsRef.current = null
       sparkRef.current = null
       splatMeshRef.current = null
-      loaderRef.current = null
     }
   }, [initScene])
 
